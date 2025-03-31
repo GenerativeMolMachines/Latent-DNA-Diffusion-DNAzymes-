@@ -153,27 +153,70 @@ class VanillaVAE(nn.Module):
 
         return  res, dist
 
+
+    import RNA
+
+    def compute_mfe_dna(sequence: str) -> float:
+        """
+    Вычисляет MFE (минимальную свободную энергию) для ДНК-последовательности через RNAfold.
+    
+    :param sequence: ДНК-последовательность (например, "ATGCGTA")
+    :return: MFE в ккал/моль (число)
+        """
+        try:
+        # Конфигурация для ДНК
+            md = RNA.md()
+            md.dna = 1  # Режим ДНК
+            md.noLP = 0  # Разрешить структуры без пар оснований (для одиночных цепей)
+        
+        # Создаем контекст для RNAfold
+            fc = RNA.fold_compound(sequence, md)
+        
+        # Вычисляем MFE
+            (_, mfe) = fc.mfe()
+            return mfe
+        
+        except Exception as e:
+            print(f"Ошибка расчета MFE для {sequence}: {e}")
+            return 0.0  # Возвращаем 0 в случае ошибки
+#################################### CUSTOMED ######################################
     def loss_function(self,
                       *args,
                       **kwargs) -> dict:
         """
-        Computes the VAE loss function.
-        KL(N(\mu, \sigma), N(0, 1)) = \log \frac{1}{\sigma} + \frac{\sigma^2 + \mu^2}{2} - \frac{1}{2}
-        :param args:
-        :param kwargs:
-        :return:
+    Computes the VAE loss function for DNA sequence generation, penalizing MFE deviations.
+
+    The loss function uses a piecewise function to penalize MFE values:
+    - If MFE > -10: penalty = a * (MFE + 10)^2
+    - If MFE <= -10: penalty = exp(b * (MFE + 10))
+
+    :param args:
+    :param kwargs:
+    :return:
         """
         recons = args[0]
         input = args[1]
         dist = args[2]
+        mfe = compute_mfe_dna(recons) # Add MFE as an argument
         kld_weight = kwargs['kld_weight'] # Account for the minibatch samples from the dataset
+        a = kwargs['a']  # Penalty coefficient for MFE > -10
+        b = kwargs['b']  # Penalty coefficient for MFE <= -10
 
         kld_loss = dist.kl().sum()
-        # recons_loss = F.mse_loss(recons, input,reduction='sum')
-        # recons_loss = self.mean_sum_square_error(recons,input)
+    # recons_loss = F.mse_loss(recons, input,reduction='sum')
+    # recons_loss = self.mean_sum_square_error(recons,input)
         recons_loss = self.cross_entropy_prob(recons,input)
 
-        return recons_loss + kld_weight * kld_loss, recons_loss, kld_weight * kld_loss
+    # Piecewise MFE loss
+        mfe_penalty = torch.where(
+        mfe > -10,
+        a * (mfe + 10)**2,
+        torch.exp(b * (mfe + 10))
+    )
+
+        total_loss = recons_loss + kld_weight * kld_loss + mfe_penalty.sum()  # Add MFE penalty to total loss
+
+        return total_loss, recons_loss, kld_weight * kld_loss, mfe_penalty.sum() # return also the mfe_penalty
 
     def generate(self, x: Tensor, **kwargs) -> Tensor:
         """
