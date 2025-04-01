@@ -6,7 +6,7 @@ trainer_cfg:
 
 # data loader config
 loader_cfg:
-  data_path: ""
+  data_path: "/Users/ivangolovkin/VSCode/ClonedRepositories/Latent-DNA-Diffusion-DNAzymes-/src/datasets/split_human_mouse_rat_monkey.pt"
   batch_size: 256
   num_workers: 5
   num_processes: 2

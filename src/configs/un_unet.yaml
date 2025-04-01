@@ -11,7 +11,7 @@ trainer_cfg:
   seed: 0
 
 loader_cfg:
-  data_path: "" # this should be the torch pt file path containing the one-hot encoded DNA sequences
+  data_path: "/Users/ivangolovkin/VSCode/ClonedRepositories/Latent-DNA-Diffusion-DNAzymes-/src/datasets/split_human_mouse_rat_monkey.pt" # this should be the torch pt file path containing the one-hot encoded DNA sequences
   batch_size: 256
   num_workers: 10
   num_processes: 2
