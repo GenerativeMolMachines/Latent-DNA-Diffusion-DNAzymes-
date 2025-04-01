@@ -1,6 +1,9 @@
+import RNA
+
 import torch
 from torch import nn
 from torch.nn import functional as F
+
 from .sequence_ae.multikernel_conv_block import *
 from .sequence_ae.dna_encoder import *
 from .distribution import *
@@ -13,19 +16,23 @@ class VanillaVAE(nn.Module):
     output: reconstructed [Bx2048x4] tensor
     details: for submodule layers check DNAEncoder and DNADecoder block
     """
-    def __init__(self,
-                 in_channels: int,
-                 latent_dim: int,
-                 hidden_dims: List = None,
-                 seq2img_num_layers: int = 5,
-                 seq2img_img_width: int = 64,
-                 layer_per_block: int = 0,
-                 **kwargs) -> None:
+    def __init__(
+            self,
+            in_channels: int,
+            latent_dim: int,
+            hidden_dims: List = None,
+            seq2img_num_layers: int = 5,
+            seq2img_img_width: int = 64,
+            layer_per_block: int = 0,
+            **kwargs
+    ) -> None:
         super().__init__()
         self.in_channels = in_channels
         self.latent_dim = latent_dim
+
         if hidden_dims is None:
             hidden_dims = [4, 8]
+
         self.hidden_dims = hidden_dims.copy()
         self.seq2img_num_layers = seq2img_num_layers
         self.seq2img_img_width = seq2img_img_width
@@ -44,8 +51,13 @@ class VanillaVAE(nn.Module):
             ###########################
             modules.append(
                 nn.Sequential(
-                    nn.Conv2d(in_channels, out_channels=h_dim,
-                              kernel_size=3, stride=2, padding=1),
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels=h_dim,
+                        kernel_size=3,
+                        stride=2,
+                        padding=1
+                    ),
                     nn.BatchNorm2d(h_dim),
                     nn.LeakyReLU())
             ) # this shrinks the length and width by 2 each time
@@ -77,12 +89,14 @@ class VanillaVAE(nn.Module):
             ###########################
             modules.append(
                 nn.Sequential(
-                    nn.ConvTranspose2d(hidden_dims[i],
-                                       hidden_dims[i + 1],
-                                       kernel_size=3,
-                                       stride=2,
-                                       padding=1,
-                                       output_padding=1),
+                    nn.ConvTranspose2d(
+                        hidden_dims[i],
+                        hidden_dims[i + 1],
+                        kernel_size=3,
+                        stride=2,
+                        padding=1,
+                        output_padding=1
+                    ),
                     nn.BatchNorm2d(hidden_dims[i + 1]),
                     nn.LeakyReLU())
             )
@@ -153,66 +167,63 @@ class VanillaVAE(nn.Module):
 
         return  res, dist
 
-
-    import RNA
-
-    def compute_mfe_dna(sequence: str) -> float:
+    def compute_mfe_dna(self, sequence: str) -> float:
         """
-    Вычисляет MFE (минимальную свободную энергию) для ДНК-последовательности через RNAfold.
-    
-    :param sequence: ДНК-последовательность (например, "ATGCGTA")
-    :return: MFE в ккал/моль (число)
+        Вычисляет MFE (минимальную свободную энергию) для ДНК-последовательности через RNAfold.
+        
+        :param sequence: ДНК-последовательность (например, "ATGCGTA")
+        :return: MFE в ккал/моль (число)
         """
         try:
-        # Конфигурация для ДНК
+            # Конфигурация для ДНК
             md = RNA.md()
             md.dna = 1  # Режим ДНК
             md.noLP = 0  # Разрешить структуры без пар оснований (для одиночных цепей)
         
-        # Создаем контекст для RNAfold
+            # Создаем контекст для RNAfold
             fc = RNA.fold_compound(sequence, md)
         
-        # Вычисляем MFE
-            (_, mfe) = fc.mfe()
+            # Вычисляем MFE
+            _, mfe = fc.mfe()
             return mfe
-        
+
         except Exception as e:
             print(f"Ошибка расчета MFE для {sequence}: {e}")
             return 0.0  # Возвращаем 0 в случае ошибки
+
 #################################### CUSTOMED ######################################
-    def loss_function(self,
-                      *args,
-                      **kwargs) -> dict:
+
+    def loss_function(self, *args, **kwargs) -> dict:
         """
-    Computes the VAE loss function for DNA sequence generation, penalizing MFE deviations.
+        Computes the VAE loss function for DNA sequence generation, penalizing MFE deviations.
 
-    The loss function uses a piecewise function to penalize MFE values:
-    - If MFE > -10: penalty = a * (MFE + 10)^2
-    - If MFE <= -10: penalty = exp(b * (MFE + 10))
+        The loss function uses a piecewise function to penalize MFE values:
+        - If MFE > -10: penalty = a * (MFE + 10)^2
+        - If MFE <= -10: penalty = exp(b * (MFE + 10))
 
-    :param args:
-    :param kwargs:
-    :return:
+        :param args:
+        :param kwargs:
+        :return:
         """
         recons = args[0]
         input = args[1]
         dist = args[2]
-        mfe = compute_mfe_dna(recons) # Add MFE as an argument
+        mfe = self.compute_mfe_dna(recons) # Add MFE as an argument
         kld_weight = kwargs['kld_weight'] # Account for the minibatch samples from the dataset
         a = kwargs['a']  # Penalty coefficient for MFE > -10
         b = kwargs['b']  # Penalty coefficient for MFE <= -10
 
         kld_loss = dist.kl().sum()
-    # recons_loss = F.mse_loss(recons, input,reduction='sum')
-    # recons_loss = self.mean_sum_square_error(recons,input)
+        # recons_loss = F.mse_loss(recons, input,reduction='sum')
+        # recons_loss = self.mean_sum_square_error(recons,input)
         recons_loss = self.cross_entropy_prob(recons,input)
 
-    # Piecewise MFE loss
+        # Piecewise MFE loss
         mfe_penalty = torch.where(
-        mfe > -10,
-        a * (mfe + 10)**2,
-        torch.exp(b * (mfe + 10))
-    )
+            mfe > -10,
+            a * (mfe + 10)**2,
+            torch.exp(b * (mfe + 10))
+        )
 
         total_loss = recons_loss + kld_weight * kld_loss + mfe_penalty.sum()  # Add MFE penalty to total loss
 
