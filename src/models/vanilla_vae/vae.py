@@ -210,8 +210,8 @@ class VanillaVAE(nn.Module):
         dist = args[2]
         mfe = self.compute_mfe_dna(recons) # Add MFE as an argument
         kld_weight = kwargs['kld_weight'] # Account for the minibatch samples from the dataset
-        a = kwargs['a']  # Penalty coefficient for MFE > -10
-        b = kwargs['b']  # Penalty coefficient for MFE <= -10
+        a = 1  # Penalty coefficient for MFE > -10
+        b = 1  # Penalty coefficient for MFE <= -10
 
         kld_loss = dist.kl().sum()
         # recons_loss = F.mse_loss(recons, input,reduction='sum')
