@@ -208,8 +208,17 @@ class VanillaVAE(nn.Module):
         recons = args[0]
         input = args[1]
         dist = args[2]
-        mfe = self.compute_mfe_dna(recons) # Add MFE as an argument
         kld_weight = kwargs['kld_weight'] # Account for the minibatch samples from the dataset
+        recons_indices = torch.argmax(recons, dim=2)  # Берем argmax по размерности нуклеотидов (dim=2)
+
+    # 2. Преобразуем индексы в строку ДНК
+        nucleotide_mapping = {0: 'A', 1: 'C', 2: 'G', 3: 'T'}
+        recons_sequence = "".join([nucleotide_mapping[i.item()] for i in recons_indices.flatten()])
+
+
+    # 3. Вычисляем MFE для строки
+        mfe = torch.tensor(self.compute_mfe_dna(recons_sequence)) # Add MFE as an argument
+        
         a = 1  # Penalty coefficient for MFE > -10
         b = 1  # Penalty coefficient for MFE <= -10
 
