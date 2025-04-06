@@ -1,9 +1,10 @@
 import RNA
-
+import requests
 import torch
 from torch import nn
 from torch.nn import functional as F
-
+from Bio.Seq import Seq
+import subprocess
 from .sequence_ae.multikernel_conv_block import *
 from .sequence_ae.dna_encoder import *
 from .distribution import *
@@ -167,29 +168,39 @@ class VanillaVAE(nn.Module):
 
         return  res, dist
 
+
+
     def compute_mfe_dna(self, sequence: str) -> float:
-        """
-        Вычисляет MFE (минимальную свободную энергию) для ДНК-последовательности через RNAfold.
-        
-        :param sequence: ДНК-последовательность (например, "ATGCGTA")
-        :return: MFE в ккал/моль (число)
-        """
         try:
-            # Конфигурация для ДНК
-            md = RNA.md()
-            md.dna = 1  # Режим ДНК
-            md.noLP = 0  # Разрешить структуры без пар оснований (для одиночных цепей)
+            rna_seq = sequence.upper().replace('T', 'U')
         
-            # Создаем контекст для RNAfold
-            fc = RNA.fold_compound(sequence, md)
+            if not all(c in 'ACGU' for c in rna_seq):
+                raise ValueError(f"Invalid sequence: {rna_seq}")
+
+            result = subprocess.run(
+            ["RNAfold", "--noPS", "--noLP"],
+            input=rna_seq,
+            capture_output=True,
+            text=True,
+            timeout=10
+            )
+
+        # Временный вывод для отладки
+            print("="*50)
+            print("[DEBUG] RNAfold stdout:", result.stdout)
+            print("[DEBUG] RNAfold stderr:", result.stderr)
+            print("="*50)
+
+            output_lines = result.stdout.split('\n')
+            energy_line = next(line for line in reversed(output_lines) if '(' in line and ')' in line)
         
-            # Вычисляем MFE
-            _, mfe = fc.mfe()
-            return mfe
+            mfe_str = energy_line.split('(')[-1].split(')').strip()
+            return float(mfe_str)
 
         except Exception as e:
-            print(f"Ошибка расчета MFE для {sequence}: {e}")
-            return 0.0  # Возвращаем 0 в случае ошибки
+            print(f"MFE Error: {str(e)}")
+            return 0.0
+
 
 #################################### CUSTOMED ######################################
 
