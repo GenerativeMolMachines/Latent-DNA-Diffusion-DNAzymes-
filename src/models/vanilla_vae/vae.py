@@ -1,6 +1,7 @@
 import RNA
 import requests
 import torch
+import re
 from torch import nn
 from torch.nn import functional as F
 from Bio.Seq import Seq
@@ -170,9 +171,12 @@ class VanillaVAE(nn.Module):
 
 
 
+      # Импортируем модуль для регулярных выражений
+
     def compute_mfe_dna(self, sequence: str) -> float:
         try:
-            rna_seq = sequence.upper().replace('T', 'U')
+            rna_seq = sequence.upper().replace('T', 'U')[:9999]
+            #rna_seq = sequence.upper()[:9999]
         
             if not all(c in 'ACGU' for c in rna_seq):
                 raise ValueError(f"Invalid sequence: {rna_seq}")
@@ -182,7 +186,7 @@ class VanillaVAE(nn.Module):
             input=rna_seq,
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=120
             )
 
         # Временный вывод для отладки
@@ -194,7 +198,13 @@ class VanillaVAE(nn.Module):
             output_lines = result.stdout.split('\n')
             energy_line = next(line for line in reversed(output_lines) if '(' in line and ')' in line)
         
-            mfe_str = energy_line.split('(')[-1].split(')').strip()
+            mfe_match = re.search(r'\(([-+]?\d*\.\d+|\d+)\)$', energy_line)
+
+            if mfe_match:
+                mfe_str = mfe_match.group(1)  # Извлекаем значение MFE
+                print(mfe_str)
+            else:
+                print("MFE не найден")
             return float(mfe_str)
 
         except Exception as e:
